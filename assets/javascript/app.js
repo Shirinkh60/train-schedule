@@ -11,101 +11,128 @@
   };
   firebase.initializeApp(config);
 
- 
+  
 var database = firebase.database();
+console.log(database);
 
-var trainName = "";
-var destination = "";
-var startTime = "";
-var frequency = 0;
+//display current time
 
+currentTime();
+
+//set interval for automatic table refresh
+var refreshInterval = setInterval(refreshData, 30000);
+
+//store new train info and push to DB when submit button clicked
+$("button").on("click", function () {
+    //save input values as variables
+    var trainName = $("#train-name").val().trim();
+    var destination = $("#destination").val().trim();
+    var firstTrain = $("#first-train").val().trim();
+    var frequency = parseInt($("#frequency").val().trim());
+
+    //validate inputs
+    /* Need to fix */
+    if (false) {
+        alert("All fields are requred");
+        return;
+    }
+    if (moment(firstTrain, "HH:mm").isValid() === false) {
+        //error message
+        alert("Please enter a valid time");
+        return;
+    }
+
+    //push input data to database
+    database.ref().push({
+        trainName: trainName,
+        destination: destination,
+        firstTrain: firstTrain,
+        frequency: frequency
+    });
+
+    //clear input fields
+    $("input").val("");
+})
+
+//render table upon initial page load and when new trains added
+database.ref().on("child_added", function (snapshot) {
+    var data = snapshot.val();
+    displayRow(data);
+})
+
+//calculate the next arrival time and time remaining
+function calculateTimes(firstTrain, frequency) {
+    var firstTrainMoment = moment(firstTrain, "HH:mm");
+    var timeDiff, nextArrival, minsAway;
+    //if the first train hasn't arrived yet
+    if (moment().diff(firstTrainMoment) < 0) {
+        nextArrival = firstTrain;
+        minsAway = firstTrainMoment.diff(moment(), "minutes");
+    }
+    //else the first train has already arrived
+    else {
+        timeDiff = moment().diff(firstTrainMoment, "minutes");
+        minsAway = parseInt(frequency) - timeDiff % parseInt(frequency);
+        nextArrival = moment().add(minsAway, "minutes").format("HH:mm");
+
+        //if next train is tomorrow
+        if (moment().diff(moment(nextArrival, "HH:mm")) > 0) {
+            nextArrival = data.firstTrain + " (T)";
+            minsAway = (60 * 24) + firstTrainMoment.diff(moment(), "minutes");
+        }
+    }
+    return {
+        nextArrival: nextArrival,
+        minsAway: minsAway
+    }
+}
+
+//refresh table with latest calculated times
+function refreshData() {
+  currentTime();
+    $("#train-table").empty();
+    database.ref().once("value", function (dbSnapshot) {
+        dbSnapshot.forEach(function(rowSnapshot) {
+            displayRow(rowSnapshot.val());
+        });
+    })
+    console.log("Refresh complete");
+}
+
+//populate new table row
+function displayRow(data) {
+    //calcuate next arival time and minutes away and store in results in object
+    var times = calculateTimes(data.firstTrain, data.frequency);
+
+    //create new row element
+    var trainRow = $("<tr>");
+
+    //create new row content elements
+    var trainName = $("<td>");
+    var trainDestination = $("<td>");
+    var trainFrequency = $("<td>");
+    var trainNextArrival = $("<td>");
+    var trainMinsAway = $("<td>");
+
+    //define element values
+    trainName.html(data.trainName);
+    trainDestination.html(data.destination);
+    trainFrequency.html(data.frequency);
+    trainNextArrival.html(times.nextArrival);
+    trainMinsAway.html(times.minsAway);
+
+    //append contents to row
+    trainRow.append(trainName);
+    trainRow.append(trainDestination);
+    trainRow.append(trainFrequency);
+    trainRow.append(trainNextArrival);
+    trainRow.append(trainMinsAway);
+
+    //append row to table body
+    $("#train-table").append(trainRow);
+}
 function currentTime() {
   var current = moment().format('LT');
   $("#currentTime").html(current);
   setTimeout(currentTime, 1000);
 };
-
-$(".form-field").on("keyup", function() {
-  var traintemp = $("#train-name").val().trim();
-  var citytemp = $("#destination").val().trim();
-  var timetemp = $("#first-train").val().trim();
-  var freqtemp = $("#frequency").val().trim();
-
-  sessionStorage.setItem("train", traintemp);
-  sessionStorage.setItem("city", citytemp);
-  sessionStorage.setItem("time", timetemp);
-  sessionStorage.setItem("freq", freqtemp);
-});
-
-$("#train-name").val(sessionStorage.getItem("train"));
-$("#destination").val(sessionStorage.getItem("city"));
-$("#first-train").val(sessionStorage.getItem("time"));
-$("#frequency").val(sessionStorage.getItem("freq"));
-
-$("#submit").on("click", function(event) {
-  event.preventDefault();
-
-  if ($("#train-name").val().trim() === "" ||
-    $("#destination").val().trim() === "" ||
-    $("#first-train").val().trim() === "" ||
-    $("#frequency").val().trim() === "") {
-
-    alert("Please fill in all details to add new train");
-
-  } else {
-
-    trainName = $("#train-name").val().trim();
-    destination = $("#destination").val().trim();
-    startTime = $("#first-train").val().trim();
-    frequency = $("#frequency").val().trim();
-
-    $(".form-field").val("");
-
-    database.ref().push({
-      trainName: trainName,
-      destination: destination,
-      frequency: frequency,
-      startTime: startTime,
-      dateAdded: firebase.database.ServerValue.TIMESTAMP
-    });
-
-    sessionStorage.clear();
-  }
-
-});
-
-database.ref().on("child_added", function(childSnapshot) {
-  var startTimeConverted = moment(childSnapshot.val().startTime, "hh:mm").subtract(1, "years");
-  var timeDiff = moment().diff(moment(startTimeConverted), "minutes");
-  var timeRemain = timeDiff % childSnapshot.val().frequency;
-  var minToArrival = childSnapshot.val().frequency - timeRemain;
-  var nextTrain = moment().add(minToArrival, "minutes");
-  var key = childSnapshot.key;
-
-  var newrow = $("<tr>");
-  newrow.append($("<td>" + childSnapshot.val().trainName + "</td>"));
-  newrow.append($("<td>" + childSnapshot.val().destination + "</td>"));
-  newrow.append($("<td class='text-center'>" + childSnapshot.val().frequency + "</td>"));
-  newrow.append($("<td class='text-center'>" + moment(nextTrain).format("LT") + "</td>"));
-  newrow.append($("<td class='text-center'>" + minToArrival + "</td>"));
-  newrow.append($("<td class='text-center'><button class='arrival btn btn-danger btn-xs' data-key='" + key + "'>X</button></td>"));
-
-  if (minToArrival < 6) {
-    newrow.addClass("info");
-  }
-
-  $("#train-table-rows").append(newrow);
-
-});
-
-$(document).on("click", ".arrival", function() {
-  keyref = $(this).attr("data-key");
-  database.ref().child(keyref).remove();
-  window.location.reload();
-});
-
-currentTime();
-
-setInterval(function() {
-  window.location.reload();
-}, 60000);

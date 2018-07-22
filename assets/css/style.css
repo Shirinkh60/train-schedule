@@ -1,8 +1,6 @@
 body {
     background-image: url("../images/traindepot.png");
-    background-size: cover;
   }
-  
   #heading {
     font-family: Times;
     font-weight: bold;
@@ -19,4 +17,6 @@ body {
   
   th {
     font-weight: bold;
+    margin-left: 0;
   }
+  
